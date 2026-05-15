@@ -195,13 +195,14 @@ class BilliardApp:
                 glUniformMatrix4fv(self.loc_proj, 1, GL_FALSE, identity)
                 glUniformMatrix4fv(self.loc_view, 1, GL_FALSE, identity)
                 
-                # Render Background (Hitam) - Diperbesar
-                m_bg = scale(0.06, 0.9, 0.06) @ translation(0.85, 0, 0)
+                # Render Background (Hitam)
+                # sphere_vao ukurannya sangat kecil (0.0286), jadi kita butuh skala yang besar (~20x)
+                m_bg = scale(1.5, 20.0, 1.0) @ translation(0.85, 0, 0)
                 glBindVertexArray(self.sphere_vao); glUniform3fv(self.loc_color, 1, [0.15, 0.15, 0.15])
                 glUniformMatrix4fv(self.loc_model, 1, GL_FALSE, m_bg); glDrawElements(GL_TRIANGLES, len(self.sphere_i), GL_UNSIGNED_INT, None)
                 
-                # Render Power Bar (Hijau Solid) - Diperbesar
-                m_bar = scale(0.05, 0.9 * p_ratio, 0.05) @ translation(0.85, -0.45 + 0.9 * p_ratio * 0.5, 0)
+                # Render Power Bar (Hijau Solid)
+                m_bar = scale(1.5, 20.0 * p_ratio, 1.0) @ translation(0.85, -0.5 + p_ratio * 0.5, 0)
                 glUniform3fv(self.loc_color, 1, [0.0, 1.0, 0.0])
                 glUniformMatrix4fv(self.loc_model, 1, GL_FALSE, m_bar); glDrawElements(GL_TRIANGLES, len(self.sphere_i), GL_UNSIGNED_INT, None)
                 
