@@ -10,6 +10,7 @@ from math_utils import perspective, look_at, translation, rotation_axis, scale
 from ball import Ball
 from table import create_sphere_geometry, create_cube_geometry, create_cylinder_geometry, setup_vao
 from shaders import create_shader_program
+from cue import Cue
 
 class BilliardApp:
     def __init__(self):
@@ -36,16 +37,16 @@ class BilliardApp:
         self.sphere_vao = setup_vao(self.sphere_v, self.sphere_i)
         self.table_v, self.table_i = create_cube_geometry(TABLE_LENGTH/2, TABLE_HEIGHT/2, TABLE_WIDTH/2)
         self.table_vao = setup_vao(self.table_v, self.table_i)
-        self.cue_v, self.cue_i = create_cylinder_geometry(0.015, 1.5)
-        self.cue_vao = setup_vao(self.cue_v, self.cue_i)
+        self.cylinder_v, self.cylinder_i = create_cylinder_geometry(0.015, 1.5)
+        self.cylinder_vao = setup_vao(self.cylinder_v, self.cylinder_i)
+        
+        self.cue = Cue()
         
         self.balls = []
         self.reset_game()
         self.cam_dist, self.yaw, self.pitch = 1.0, -90.0, 30.0
         self.camera_target = self.balls[0].pos.copy()
         self.update_camera_vectors()
-        self.power, self.charging = 0.0, False
-        self.power_dir = 1 # 1 untuk naik, -1 untuk turun
         self.ball_in_hand = True
         glfw.set_cursor_pos_callback(self.window, self.mouse_callback)
 
@@ -94,21 +95,13 @@ class BilliardApp:
         
         moving = any(np.linalg.norm(b.vel) > MIN_VELOCITY for b in self.balls)
         if glfw.get_key(self.window, glfw.KEY_SPACE) == glfw.PRESS and not moving:
-            # Ping-Pong Power Logic
-            self.power += self.power_dir * dt * 6.0 # Kecepatan pengisian
-            if self.power >= 8.0:
-                self.power = 8.0
-                self.power_dir = -1 # Balik arah jadi turun
-            elif self.power <= 0.0:
-                self.power = 0.0
-                self.power_dir = 1 # Balik arah jadi naik
-            self.charging = True
-        elif self.charging:
+            self.cue.charge(dt)
+        elif self.cue.charging:
             hit_dir = self.cam_front.copy(); hit_dir[1] = 0
             if np.linalg.norm(hit_dir) > 0.001: hit_dir /= np.linalg.norm(hit_dir)
-            self.balls[0].vel = hit_dir * self.power * 1.5
-            self.power, self.charging = 0.0, False
-            self.power_dir = 1 # Reset arah ke naik untuk pukulan berikutnya
+            power_released = self.cue.release()
+            self.balls[0].vel = hit_dir * power_released * 1.5
+            
         if glfw.get_key(self.window, glfw.KEY_R) == glfw.PRESS: self.reset_game()
 
     def update_physics(self, dt):
@@ -167,10 +160,10 @@ class BilliardApp:
                 m = scale(bt/(TABLE_LENGTH/2), 1.2, 1.1) @ translation(s*(TABLE_LENGTH/2 + bt/2), -TABLE_HEIGHT/2 - BALL_RADIUS + 0.02, 0)
                 glUniformMatrix4fv(self.loc_model, 1, GL_FALSE, m); glDrawElements(GL_TRIANGLES, len(self.table_i), GL_UNSIGNED_INT, None)
 
-            glBindVertexArray(self.cue_vao); glUniform3fv(self.loc_color, 1, [0.0, 0.0, 0.0])
+            glBindVertexArray(self.cylinder_vao); glUniform3fv(self.loc_color, 1, [0.0, 0.0, 0.0])
             for p in POCKET_POSITIONS:
                 m = scale(4.2, 0.1, 4.2) @ translation(p[0], -BALL_RADIUS - 0.075, p[2])
-                glUniformMatrix4fv(self.loc_model, 1, GL_FALSE, m); glDrawElements(GL_TRIANGLES, len(self.cue_i), GL_UNSIGNED_INT, None)
+                glUniformMatrix4fv(self.loc_model, 1, GL_FALSE, m); glDrawElements(GL_TRIANGLES, len(self.cylinder_i), GL_UNSIGNED_INT, None)
 
             glBindVertexArray(self.sphere_vao)
             for b in self.balls:
@@ -179,17 +172,12 @@ class BilliardApp:
                 glUniformMatrix4fv(self.loc_model, 1, GL_FALSE, m); glUniform3fv(self.loc_color, 1, b.color); glDrawElements(GL_TRIANGLES, len(self.sphere_i), GL_UNSIGNED_INT, None)
             
             if not moving and self.balls[0].active:
-                cue_ball = self.balls[0]; dir_vec = -self.cam_front.copy(); dir_vec[1] = 0
-                if np.linalg.norm(dir_vec) > 0.001: dir_vec /= np.linalg.norm(dir_vec)
-                angle_rad = math.radians(self.yaw)
-                m_stick = rotation_axis([0, 1, 0], angle_rad) @ rotation_axis([0, 0, 1], math.pi/2) @ translation(cue_ball.pos[0] + dir_vec[0]*(0.05 + self.power*0.15), cue_ball.pos[1], cue_ball.pos[2] + dir_vec[2]*(0.05 + self.power*0.15))
-                glBindVertexArray(self.cue_vao); glUniform3fv(self.loc_color, 1, [0.4, 0.2, 0.1])
-                glUniformMatrix4fv(self.loc_model, 1, GL_FALSE, m_stick); glDrawElements(GL_TRIANGLES, len(self.cue_i), GL_UNSIGNED_INT, None)
+                self.cue.render(self.loc_model, self.loc_color, self.balls[0].pos, self.cam_front, self.yaw)
             
             # 2. Render UI (Simple Green Power Bar)
-            if self.charging:
+            if self.cue.charging:
                 glDisable(GL_DEPTH_TEST)
-                p_ratio = self.power / 8.0
+                p_ratio = self.cue.power / 8.0
                 
                 identity = np.eye(4, dtype=np.float32)
                 glUniformMatrix4fv(self.loc_proj, 1, GL_FALSE, identity)
